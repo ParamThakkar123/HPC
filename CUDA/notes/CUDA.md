@@ -19,7 +19,7 @@
 - Triple angle brackets `<<< >>>` mark a call from the host thread to the code on the device side.
 - A kernel is executed by an array of threads and all threads run the same code.
 - The parameters within the triple angle brackets are the execution configuration, which specifies how many threads will execute the kernel
-- `cudaDeviceReset()` will explicitly destroy and cleanup all resources associated with the current device in the current process.
+
 
 ### CUDA Program Structure
 
