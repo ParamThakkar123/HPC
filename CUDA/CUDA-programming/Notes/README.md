@@ -110,5 +110,3 @@
 `__syncthreads()` acts as a barrier at which all threads in the block must wait before any is allowed to proceed.
 
 ![Grid of thread blocks](image-2.png)
-
-### Thread Block Clusters
