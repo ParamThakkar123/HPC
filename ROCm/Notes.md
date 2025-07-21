@@ -174,3 +174,87 @@ hipGetDevice(&deviceID);
 
 - The Host can manage several devices by swapping the currently selected device during runtime.
 - MPI ranks can set different devices or over-subscribe (share) devices
+
+### Blocking vs Nonblocking API Functions
+
+- The kernel launch function, `hipLaunchKernelGGL`, is non blocking for the host
+- After sending instructions or data, the host continues immediately while the device executes the kernel
+- If you know the kernel will take some time, this is a good area to do some work on the host.
+- However, hipMemcpy is blocking: The data pointed to in the arguments can be accessed/modified after the function returns.
+- The non blocking version is `hipMemcpyAsync`:
+```cpp
+hipMemcpyAsync(d_a, h_a, Nbytes, hipMemcpyHostToDevice, stream);
+```
+- Like `hipLaunchKernelGGL`, this function takes an argument of type `hipStream_t`
+- It is not safe to access/modify the arguments of hipMemcpyAsync without some sort of synchronization.
+
+### Streams
+A stream in HIP is a queue of tasks (e.g. kernels, memcpys, events)
+- Tasks enqueued in a stream complete in order on that stream.
+- Tasks being executed in different streams are allowed to overlap and share device resources.
+
+Streams are created via:
+`hipStream_t` stream;
+`hipStreamCreate(&stream);`
+
+and destroyed via:
+`hipStreamDestroy(stream);`
+
+- Passing 0 or NULL as the hipStream_t argument to a function instructs the function to execute on a stream called the NULL Stream:
+- No task on the NULL stream will begin until all previously enqueued tasks in all other streams have completed.
+- Blocking calls the `hipMemcpy` run on the NULL stream.
+- Kernels must modify different parts of memory to avoid data races.
+- With large kernels, overlapping computations may not help performance
+
+- There is another use for streams besides concurrent kernels: Overlapping kernels with data movement.
+
+- AMD GPUs have separate engines for:
+1. Host->device Memcpys
+2. Device->Host Memcpys
+3. Compute Kernels
+
+- These three different operations can overlap without dividing the GPU's resources:
+1. The overlapping operations should be in separate, non-NULL, streams
+2. The host memory should be pinned. 
+
+### Pinned Memory
+Host data allocations are pageable by default. The GPU can directly access Host data if it is pinned instead.
+
+- Allocating pinned host memory:
+```cpp
+double *h_a = NULL;
+hipHostMalloc(&h_a, Nbytes);
+```
+- Free pinned host memory:
+```cpp
+hipHostFree(h_a);
+```
+
+- Host<->Device memcpy bandwidth increases significantly when host memory is pinned.
+- It is good practice to allocate host memory that is frequently transferred to/from the device as pinned memory.
+
+### Synchronization
+How do we coordinate execution on device streams with host execution? Need some synchronization points.
+
+`hipDeviceSynchronize();` :
+- Heavy-duty sync point.
+- Blocks host until all work in all device streams has reported complete
+
+### Events
+
+A `hipEvent_t` object is created on a device via:
+- `hipEvent_t event`;
+- `hipEventCreate(&event)`
+
+We queue an event into a stream:
+`hipEventRecord(event, stream);`
+
+- The event records what work is currently enqueued in the stream.
+- When the stream's execution reaches event, the event is considered `complete`
+
+At the end of the application, event objects should be destroyed:
+`hipEventDestroy(event)`
+
+`hipEventSynchronize(event)`:
+- Block host until event reports complete.
+- Only a synchronization point with respect to the stream where event was enqueued.
